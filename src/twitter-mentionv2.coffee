@@ -21,8 +21,8 @@
 #
 
 TWIT = require "twit"
-MENTION_ROOM = process.env.HUBOT_TWITTER_MENTION_ROOM || "#general"
-MAX_TWEETS = 5
+MENTION_ROOM = process.env.HUBOT_TWITTER_MENTION_ROOM || "#sandbox"
+MAX_TWEETS = 10
 
 config =
   consumer_key: process.env.HUBOT_TWITTER_CONSUMER_KEY
@@ -34,27 +34,34 @@ getTwit = ->
   unless twit
     twit = new TWIT config
 
+doSearch = (robot) ->
+  query = process.env.HUBOT_TWITTER_MENTION_QUERY
+  since_id = robot.brain.data.last_tweet
+  count = MAX_TWEETS
+
+  twit = getTwit()
+  twit.get 'search/tweets', {q: query, count: count, since_id: since_id}, (err, data) ->
+    if err
+      console.log "Error getting tweets: #{err}"
+      return
+    if data.statuses? and data.statuses.length > 0
+      robot.brain.data.last_tweet = data.statuses[0].id_str
+      for tweet in data.statuses.reverse()
+        message = "Tweet Alert: http://twitter.com/#{tweet.user.screen_name}/status/#{tweet.id_str}"
+        robot.messageRoom MENTION_ROOM, message
+
+
 module.exports = (robot) ->
   robot.brain.on 'loaded', =>
     robot.brain.data.last_tweet ||= '1'
     doAutomaticSearch(robot)
 
   doAutomaticSearch = (robot) ->
-    query = process.env.HUBOT_TWITTER_MENTION_QUERY
-    since_id = robot.brain.data.last_tweet
-    count = MAX_TWEETS
-
-    twit = getTwit()
-    twit.get 'search/tweets', {q: query, count: count, since_id: since_id}, (err, data) ->
-      if err
-        console.log "Error getting tweets: #{err}"
-        return
-      if data.statuses? and data.statuses.length > 0
-        robot.brain.data.last_tweet = data.statuses[0].id_str
-        for tweet in data.statuses.reverse()
-          message = "Tweet Alert: http://twitter.com/#{tweet.user.screen_name}/status/#{tweet.id_str}"
-          robot.messageRoom MENTION_ROOM, message
+    doSearch(robot)
 
     setTimeout (->
       doAutomaticSearch(robot)
-    ), 1000 * 60 * 2
+    ), 1000 * 60 * 1.5
+
+  robot.respond /search/i, (res) ->
+    doSearch(robot)
